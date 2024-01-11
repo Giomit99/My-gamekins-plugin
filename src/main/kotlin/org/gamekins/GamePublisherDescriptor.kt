@@ -74,7 +74,7 @@ class GamePublisherDescriptor : BuildStepDescriptor<Publisher?>(GamePublisher::c
         if (project?.someWorkspace == null) {
             return FormValidation.ok()
         }
-        return if (PublisherUtil.doCheckJacocoCSVPath(project.someWorkspace!!, jacocoCSVPath!!))
+        return if (PublisherUtil.doCheckFilePath(project.someWorkspace!!, jacocoCSVPath!!))
             FormValidation.ok()
         else FormValidation.error("The file could not be found")
     }
@@ -90,6 +90,19 @@ class GamePublisherDescriptor : BuildStepDescriptor<Publisher?>(GamePublisher::c
         return if (PublisherUtil.doCheckJacocoResultsPath(project.someWorkspace!!, jacocoResultsPath!!))
             FormValidation.ok()
         else FormValidation.error("The folder is not correct")
+    }
+
+    /**
+     * Checks whether the path of the jdepend-report.html file [jdependResultsPath] exists in the [project].
+     */
+    fun doCheckJDependResultsPath(@AncestorInPath project: AbstractProject<*, *>?,
+                             @QueryParameter jdependResultsPath: String?): FormValidation {
+        if (project?.someWorkspace == null) {
+            return FormValidation.ok()
+        }
+        return if (PublisherUtil.doCheckFilePath(project.someWorkspace!!, jdependResultsPath!!))
+            FormValidation.ok()
+        else FormValidation.error("The file could not be found")
     }
 
     @Nonnull
@@ -139,6 +152,7 @@ class GamePublisherDescriptor : BuildStepDescriptor<Publisher?>(GamePublisher::c
         challenges[TestChallenge::class.java] = 1
         challenges[MutationChallenge::class.java] = 6
         challenges[SmellChallenge::class.java] = 4
+        challenges[CyclesJDChallenge::class.java] = 9
     }
 
     /**

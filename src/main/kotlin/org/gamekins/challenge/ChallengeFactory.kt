@@ -33,6 +33,7 @@ import org.gamekins.util.Constants.Parameters
 import org.gamekins.util.Constants.TRY_CLASS
 import org.gamekins.util.GitUtil.HeadCommitCallable
 import org.jsoup.nodes.Document
+import java.io.File
 import java.io.IOException
 import kotlin.collections.ArrayList
 import kotlin.jvm.Throws
@@ -185,37 +186,7 @@ object ChallengeFactory {
             }
 
             val data = ChallengeGenerationData(parameters, user, selectedFile, listener)
-
-            when {
-                challengeClass == TestChallenge::class.java -> {
-                    challenge = generateTestChallenge(data, parameters, listener)
-                }
-                challengeClass.superclass == CoverageChallenge::class.java -> {
-                    listener.logger.println(
-                        TRY_CLASS + selectedFile.fileName + AND_TYPE
-                                + challengeClass
-                    )
-                    challenge = generateCoverageChallenge(data, challengeClass)
-                }
-                challengeClass == MutationChallenge::class.java -> {
-                    listener.logger.println(
-                        TRY_CLASS + selectedFile.fileName + AND_TYPE
-                                + challengeClass
-                    )
-                    challenge = generateMutationChallenge(selectedFile as SourceFileDetails, parameters,
-                        listener, user)
-                }
-                challengeClass == SmellChallenge::class.java -> {
-                    listener.logger.println(
-                        TRY_CLASS + selectedFile.fileName + AND_TYPE
-                                + challengeClass
-                    )
-                    challenge = generateSmellChallenge(data, listener)
-                }
-                else -> {
-                    challenge = generateThirdPartyChallenge(data, challengeClass)
-                }
-            }
+            challenge = callChallengeConstructor(challengeClass, data, parameters, listener, selectedFile, user)
 
             if (rejectedChallenges.any { it.first == challenge }) {
                 listener.logger.println("[Gamekins] Challenge ${challenge?.toEscapedString()} was already " +
@@ -234,6 +205,60 @@ object ChallengeFactory {
             }
         } while (challenge == null)
 
+        return challenge
+    }
+
+    /**
+     * Call the constructor of the given challenge type of [challengeClass]
+     */
+    private fun callChallengeConstructor(
+        challengeClass: Class<out Challenge>, data: ChallengeGenerationData,
+        parameters: Parameters, listener: TaskListener, selectedFile: FileDetails, user: User
+    ): Challenge? {
+        val challenge: Challenge?
+        when {
+            challengeClass == TestChallenge::class.java -> {
+                challenge = generateTestChallenge(data, parameters, listener)
+            }
+
+            challengeClass.superclass == CoverageChallenge::class.java -> {
+                listener.logger.println(
+                    TRY_CLASS + selectedFile.fileName + AND_TYPE
+                            + challengeClass
+                )
+                challenge = generateCoverageChallenge(data, challengeClass)
+            }
+
+            challengeClass == MutationChallenge::class.java -> {
+                listener.logger.println(
+                    TRY_CLASS + selectedFile.fileName + AND_TYPE
+                            + challengeClass
+                )
+                challenge = generateMutationChallenge(
+                    selectedFile as SourceFileDetails, parameters,
+                    listener, user
+                )
+            }
+
+            challengeClass == SmellChallenge::class.java -> {
+                listener.logger.println(
+                    TRY_CLASS + selectedFile.fileName + AND_TYPE
+                            + challengeClass
+                )
+                challenge = generateSmellChallenge(data, listener)
+            }
+            challengeClass == CyclesJDChallenge::class.java -> {
+                listener.logger.println(
+                    TRY_CLASS + selectedFile.fileName + AND_TYPE
+                            + challengeClass
+                )
+                challenge = generateCyclesJDChallenge(data, listener)
+            }
+
+            else -> {
+                challenge = generateThirdPartyChallenge(data, challengeClass)
+            }
+        }
         return challenge
     }
 
@@ -362,6 +387,29 @@ object ChallengeFactory {
         return TestChallenge(data)
     }
 
+    private fun generateCyclesJDChallenge(data: ChallengeGenerationData, listener: TaskListener) : Challenge?{
+        val document= generateJDDocument(data.parameters, listener) ?: return null
+        val cycleDictionary= JdependUtil.getCyclesList(document) ?: return null
+
+        return CyclesJDChallenge(data, cycleDictionary)
+    }
+
+    private fun generateJDDocument(parameters: Parameters, listener: TaskListener): Document?{
+        val jdependHTMLPath= StringBuilder(parameters.remote)
+        val jdependHTMLFile= File(jdependHTMLPath.toString()+parameters.jdependResultsPath.substring(2))
+        val jdependSourceFile= JacocoUtil.calculateCurrentFilePath(parameters.workspace, jdependHTMLFile)
+
+        val document: Document = try {
+            if (!jdependSourceFile.exists())
+                return null
+            JacocoUtil.generateDocument(jdependSourceFile)
+        } catch (e: Exception) {
+            e.printStackTrace(listener.logger)
+            return null
+        }
+        return document
+    }
+
     /**
      * Generates a new third party [Challenge]. The values listed below in the method may be null and have to be checked
      * in the initialisation of the [Challenge].
@@ -407,10 +455,19 @@ object ChallengeFactory {
                 if (challenge is DummyChallenge) break
 
                 for (currentChallenge in property.getCurrentChallenges(parameters.projectName)) {
-                    if (currentChallenge.toString() == challenge.toString()) {
-                        isChallengeUnique = false
-                        listener.logger.println("[Gamekins] Challenge is not unique")
-                        break
+                    if(currentChallenge::class.java == CyclesJDChallenge::class.java && challenge::class.java == CyclesJDChallenge::class.java){
+                        if(currentChallenge.equals(challenge)){
+                            isChallengeUnique= false
+                            listener.logger.println("[Gamekins] Challenge is not unique")
+                            break
+                        }
+                    }
+                    else {
+                        if (currentChallenge.toString() == challenge.toString()) {
+                            isChallengeUnique = false
+                            listener.logger.println("[Gamekins] Challenge is not unique")
+                            break
+                        }
                     }
                 }
                 count++
